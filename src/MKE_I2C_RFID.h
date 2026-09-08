@@ -111,6 +111,7 @@ protected:
     TwoWire *_wire;
     uint8_t _address;
 
+    void sendCommand(uint8_t modeId, uint32_t payload = 0);
     uint32_t requestData(uint8_t modeId, uint32_t payload = 0);
     uint32_t floatToUint32(float value);
     float uint32ToFloat(uint32_t value);

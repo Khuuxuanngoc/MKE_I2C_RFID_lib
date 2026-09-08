@@ -7,7 +7,6 @@ MKE_I2C_RFID::MKE_I2C_RFID(TwoWire *wire) {
 
 bool MKE_I2C_RFID::begin(uint8_t address) {
     _address = address;
-    _wire->begin();
     
     // Check if the module responds by querying the module ID
     uint8_t id = getModuleID();
@@ -17,7 +16,7 @@ bool MKE_I2C_RFID::begin(uint8_t address) {
     return true;
 }
 
-uint32_t MKE_I2C_RFID::requestData(uint8_t modeId, uint32_t payload) {
+void MKE_I2C_RFID::sendCommand(uint8_t modeId, uint32_t payload) {
     uint8_t v0 = (payload >> 24) & 0xFF;
     uint8_t v1 = (payload >> 16) & 0xFF;
     uint8_t v2 = (payload >> 8) & 0xFF;
@@ -33,6 +32,10 @@ uint32_t MKE_I2C_RFID::requestData(uint8_t modeId, uint32_t payload) {
     _wire->write(v3);
     _wire->write(chkTx);
     _wire->endTransmission();
+}
+
+uint32_t MKE_I2C_RFID::requestData(uint8_t modeId, uint32_t payload) {
+    sendCommand(modeId, payload);
     
     unsigned long startT = millis();
     while (millis() - startT < 100) {
@@ -118,7 +121,7 @@ uint8_t MKE_I2C_RFID::getUIDFull(uint8_t *uidBuffer) {
     uint8_t size = getUIDSize();
     if (size == 0 || size > 10) return 0;
     
-    requestData(MKE_RFID_MODE_GET_UID_FULL);
+    sendCommand(MKE_RFID_MODE_GET_UID_FULL);
     
     uint8_t expectedBytes = size + 2;
     unsigned long startT = millis();
@@ -165,7 +168,7 @@ uint8_t MKE_I2C_RFID::authenticateKeyB(uint8_t blockAddr) {
 }
 
 uint8_t MKE_I2C_RFID::readBlock(uint8_t blockAddr, uint8_t *buffer) {
-    requestData(MKE_RFID_MODE_READ_BLOCK, blockAddr);
+    sendCommand(MKE_RFID_MODE_READ_BLOCK, blockAddr);
     
     unsigned long startT = millis();
     while (millis() - startT < 100) {

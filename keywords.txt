@@ -42,10 +42,8 @@ performSelfTest	KEYWORD2
 getProductCode	KEYWORD2
 getLastUnixtimeTest	KEYWORD2
 unlockAdminMode	KEYWORD2
-setModuleID	KEYWORD2
-setFirmwareVersion	KEYWORD2
-setProductCode	KEYWORD2
-setLastUnixtimeTest	KEYWORD2
+factoryReset	KEYWORD2
+isSectorTrailer	KEYWORD2
 
 #######################################
 # Constants (LITERAL1)

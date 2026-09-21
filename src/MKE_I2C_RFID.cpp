@@ -150,6 +150,13 @@ uint8_t MKE_I2C_RFID::getUIDFull(uint8_t *uidBuffer) {
 // --------------------------------------------------------
 // MIFARE Classic Block Operations
 // --------------------------------------------------------
+bool MKE_I2C_RFID::isSectorTrailer(uint8_t blockAddr) {
+    if (blockAddr < 128) {
+        return ((blockAddr + 1) % 4 == 0); // MIFARE 1K & 4K (Sectors 0-31)
+    }
+    return ((blockAddr + 1) % 16 == 0); // MIFARE 4K (Sectors 32-39)
+}
+
 void MKE_I2C_RFID::setAuthKey(const uint8_t key[6]) {
     uint32_t high = ((uint32_t)key[0] << 24) | ((uint32_t)key[1] << 16) | ((uint32_t)key[2] << 8) | key[3];
     uint32_t low = ((uint32_t)key[4] << 8) | key[5];
@@ -193,7 +200,11 @@ uint8_t MKE_I2C_RFID::readBlock(uint8_t blockAddr, uint8_t *buffer) {
     return 4; // MFRC522::STATUS_TIMEOUT
 }
 
-uint8_t MKE_I2C_RFID::writeBlock(uint8_t blockAddr, const uint8_t *buffer) {
+uint8_t MKE_I2C_RFID::writeBlock(uint8_t blockAddr, const uint8_t *buffer, bool allowSectorTrailerWrite) {
+    if (!allowSectorTrailerWrite && isSectorTrailer(blockAddr)) {
+        return 1; // STATUS_ERROR: Prevent accidental overwrite of Sector Trailer (Password/Access Bits)
+    }
+    
     uint32_t word0 = ((uint32_t)buffer[0] << 24) | ((uint32_t)buffer[1] << 16) | ((uint32_t)buffer[2] << 8) | buffer[3];
     uint32_t word1 = ((uint32_t)buffer[4] << 24) | ((uint32_t)buffer[5] << 16) | ((uint32_t)buffer[6] << 8) | buffer[7];
     uint32_t word2 = ((uint32_t)buffer[8] << 24) | ((uint32_t)buffer[9] << 16) | ((uint32_t)buffer[10] << 8) | buffer[11];
@@ -208,6 +219,33 @@ uint8_t MKE_I2C_RFID::writeBlock(uint8_t blockAddr, const uint8_t *buffer) {
     return getLastStatus();
 }
 
+int8_t MKE_I2C_RFID::setUID(uint8_t* newUID, uint8_t uidSize) {
+    if (uidSize == 0 || uidSize > 10) return 1; // STATUS_ERROR
+    
+    // Clear and fill a local 16-byte buffer
+    uint8_t tempBuf[16] = {0};
+    memcpy(tempBuf, newUID, uidSize);
+    
+    // Chunk the data into 32-bit words
+    uint32_t word0 = ((uint32_t)tempBuf[0] << 24) | ((uint32_t)tempBuf[1] << 16) | ((uint32_t)tempBuf[2] << 8) | tempBuf[3];
+    uint32_t word1 = ((uint32_t)tempBuf[4] << 24) | ((uint32_t)tempBuf[5] << 16) | ((uint32_t)tempBuf[6] << 8) | tempBuf[7];
+    uint32_t word2 = ((uint32_t)tempBuf[8] << 24) | ((uint32_t)tempBuf[9] << 16) | ((uint32_t)tempBuf[10] << 8) | tempBuf[11];
+    uint32_t word3 = ((uint32_t)tempBuf[12] << 24) | ((uint32_t)tempBuf[13] << 16) | ((uint32_t)tempBuf[14] << 8) | tempBuf[15];
+    
+    requestData(MKE_RFID_MODE_WRITE_BLOCK_DATA_HIGH, word0);
+    requestData(MKE_RFID_MODE_WRITE_BLOCK_DATA_MID1, word1);
+    requestData(MKE_RFID_MODE_WRITE_BLOCK_DATA_MID2, word2);
+    requestData(MKE_RFID_MODE_WRITE_BLOCK_DATA_LOW, word3);
+    
+    // Execute Set UID Mode
+    requestData(MKE_RFID_MODE_SET_UID_EXECUTE, uidSize);
+    
+    // According to MKE_I2C_product_Rules.md: Always append a delay(50); after any SET command
+    delay(50);
+    
+    return getLastStatus();
+}
+
 uint8_t MKE_I2C_RFID::getLastStatus() {
     return requestData(MKE_RFID_MODE_GET_LAST_STATUS);
 }
@@ -215,7 +253,10 @@ uint8_t MKE_I2C_RFID::getLastStatus() {
 // --------------------------------------------------------
 // MIFARE Classic Value Block Operations
 // --------------------------------------------------------
-uint8_t MKE_I2C_RFID::setValue(uint8_t blockAddr, int32_t value) {
+uint8_t MKE_I2C_RFID::setValue(uint8_t blockAddr, int32_t value, bool allowSectorTrailerWrite) {
+    if (!allowSectorTrailerWrite && isSectorTrailer(blockAddr)) {
+        return 1; // STATUS_ERROR: Prevent accidental overwrite of Sector Trailer
+    }
     requestData(MKE_RFID_MODE_SET_TARGET_BLOCK, blockAddr);
     requestData(MKE_RFID_MODE_SET_VALUE, (uint32_t)value);
     return getLastStatus();
@@ -227,13 +268,19 @@ uint8_t MKE_I2C_RFID::getValue(uint8_t blockAddr, int32_t *value) {
     return getLastStatus();
 }
 
-uint8_t MKE_I2C_RFID::incrementValue(uint8_t blockAddr, int32_t delta) {
+uint8_t MKE_I2C_RFID::incrementValue(uint8_t blockAddr, int32_t delta, bool allowSectorTrailerWrite) {
+    if (!allowSectorTrailerWrite && isSectorTrailer(blockAddr)) {
+        return 1;
+    }
     requestData(MKE_RFID_MODE_SET_TARGET_BLOCK, blockAddr);
     requestData(MKE_RFID_MODE_INCREMENT, (uint32_t)delta);
     return getLastStatus();
 }
 
-uint8_t MKE_I2C_RFID::decrementValue(uint8_t blockAddr, int32_t delta) {
+uint8_t MKE_I2C_RFID::decrementValue(uint8_t blockAddr, int32_t delta, bool allowSectorTrailerWrite) {
+    if (!allowSectorTrailerWrite && isSectorTrailer(blockAddr)) {
+        return 1;
+    }
     requestData(MKE_RFID_MODE_SET_TARGET_BLOCK, blockAddr);
     requestData(MKE_RFID_MODE_DECREMENT, (uint32_t)delta);
     return getLastStatus();
@@ -283,18 +330,7 @@ void MKE_I2C_RFID_Advanced::unlockAdminMode(uint32_t password) {
     requestData(MKE_RFID_MODE_UNLOCK_ADMIN, password);
 }
 
-void MKE_I2C_RFID_Advanced::setModuleID(uint8_t id) {
-    requestData(MKE_RFID_MODE_SET_ID_MODULE, id);
+void MKE_I2C_RFID_Advanced::factoryReset() {
+    requestData(MKE_RFID_MODE_FACTORY_RESET);
 }
 
-void MKE_I2C_RFID_Advanced::setFirmwareVersion(uint32_t version) {
-    requestData(MKE_RFID_MODE_SET_FW_VERSION, version);
-}
-
-void MKE_I2C_RFID_Advanced::setProductCode(uint16_t code) {
-    requestData(MKE_RFID_MODE_SET_PRODUCT_CODE, code);
-}
-
-void MKE_I2C_RFID_Advanced::setLastUnixtimeTest(uint32_t timestamp) {
-    requestData(MKE_RFID_MODE_SET_LAST_UNIXTIME_TEST, timestamp);
-}

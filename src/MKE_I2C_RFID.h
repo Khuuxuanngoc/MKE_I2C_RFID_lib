@@ -37,6 +37,7 @@
 #define MKE_RFID_MODE_WRITE_BLOCK_DATA_LOW  79
 #define MKE_RFID_MODE_WRITE_BLOCK_EXECUTE   80
 #define MKE_RFID_MODE_GET_LAST_STATUS  81
+#define MKE_RFID_MODE_SET_UID_EXECUTE  82
 
 #define MKE_RFID_MODE_GET_VALUE        90
 #define MKE_RFID_MODE_SET_VALUE        91
@@ -52,6 +53,7 @@
 #define MKE_RFID_MODE_GET_FW_RC522     105
 
 #define MKE_RFID_MODE_UNLOCK_ADMIN     200
+#define MKE_RFID_MODE_FACTORY_RESET    201
 
 class MKE_I2C_RFID {
 public:
@@ -88,16 +90,20 @@ public:
     uint8_t readBlock(uint8_t blockAddr, uint8_t *buffer);
     
     // Write 16 bytes to a block
-    uint8_t writeBlock(uint8_t blockAddr, const uint8_t *buffer);
+    // allowSectorTrailerWrite: if false, prevents writing to Sector Trailers to avoid bricking the card
+    uint8_t writeBlock(uint8_t blockAddr, const uint8_t *buffer, bool allowSectorTrailerWrite = false);
     
     // Status
     uint8_t getLastStatus();
     
     // MIFARE Classic Value Block Operations
-    uint8_t setValue(uint8_t blockAddr, int32_t value);
+    uint8_t setValue(uint8_t blockAddr, int32_t value, bool allowSectorTrailerWrite = false);
     uint8_t getValue(uint8_t blockAddr, int32_t *value);
-    uint8_t incrementValue(uint8_t blockAddr, int32_t delta);
-    uint8_t decrementValue(uint8_t blockAddr, int32_t delta);
+    uint8_t incrementValue(uint8_t blockAddr, int32_t delta, bool allowSectorTrailerWrite = false);
+    uint8_t decrementValue(uint8_t blockAddr, int32_t delta, bool allowSectorTrailerWrite = false);
+    
+    // Magic Card (Gen1a) features (Under Development)
+    int8_t setUID(uint8_t* newUID, uint8_t uidSize = 4);
     
     // Module Control
     void haltCard();
@@ -106,6 +112,9 @@ public:
     uint8_t getAntennaGain();
     uint8_t getRC522FirmwareVersion();
     bool performSelfTest();
+    
+    // Safety Helpers
+    bool isSectorTrailer(uint8_t blockAddr);
     
 protected:
     TwoWire *_wire;
@@ -130,12 +139,8 @@ public:
     
     // Factory Reset / Admin Mode
     void unlockAdminMode(uint32_t password = 0xA5A5A5A5);
+    void factoryReset();
     
-    // General Module Configuration (Setters - Requires Admin Mode)
-    void setModuleID(uint8_t id);
-    void setFirmwareVersion(uint32_t version);
-    void setProductCode(uint16_t code);
-    void setLastUnixtimeTest(uint32_t timestamp);
 };
 
 #endif
